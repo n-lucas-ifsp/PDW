@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
@@ -38,6 +39,12 @@ class ProductController extends Controller
 
         if ( Auth::user()->sys_level > config('enums.USER_LEVEL.COMMOM')){
             return response()->json(['message' => 'Valid only for commom users.'], 403);
+        }
+
+        $category = Category::findOrFail($request->input('id_category'));
+
+        if (!$category->active){
+            return response()->json(['message' => 'Category inactive.'], 403);
         }
 
         $product = new Product([
@@ -83,9 +90,9 @@ class ProductController extends Controller
 
             $product = Product::findOrFail($id);
 
-            if ((! $product->seller_id == Auth::user()->id) && (Auth::user()->sys_level < config('enums.USER_LEVEL.MODERATOR'))){
+            if (($product->id_seller != Auth::user()->id) && (Auth::user()->sys_level < config('enums.USER_LEVEL.MODERATOR'))){
                 return response()->json(['message' => 'Impossible edit non-self product.'], 403);
-            } else          
+            }          
 
             $product->active = $active;
             $product->save();
@@ -154,23 +161,16 @@ class ProductController extends Controller
     {
         $type_search = $request->query('type_search');
         $search_key = $request->query('search_key');
-        $main_cat_type = $request->query('main_cat_type');
-    
-        if (!$type_search || !$search_key) {
-            return response()->json(['error' => 'Type search and search key are required.'], 400);
+
+        if (!$type_search || (!$search_key)) {
+            return response()->json(['error' => 'Type search and search key or category_id are required.'], 400);
         }
-    
+
         $productsQuery = Product::where('active', true)
             ->where('already_selled', false);
-    
-        if ($main_cat_type) {
-            $productsQuery->whereHas('category', function ($query) use ($main_cat_type) {
-                $query->where('main_type', $main_cat_type);
-            });
-        }
-    
+
         $products = [];
-    
+
         switch ($type_search) {
             case 1:
                 $products = $productsQuery->where('title', 'LIKE', "%{$search_key}%")->get();
@@ -181,10 +181,13 @@ class ProductController extends Controller
             case 3:
                 $products = $productsQuery->where('author', 'LIKE', "%{$search_key}%")->get();
                 break;
+            case 4:
+                $products = $productsQuery->where('id_category', $search_key)->get();
+                break;
             default:
                 return response()->json(['error' => 'Invalid type search.'], 400);
         }
-    
+
         return response()->json(['products' => $products], 200);
     }
     
